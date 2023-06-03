@@ -1,0 +1,13 @@
+name: recommender-systems-project
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10.8
+  - pip>=23.0.1
+  - pytorch-cuda>=11.8
+  - pytorch>=2.0.0
+  - pip:
+    - ruff
