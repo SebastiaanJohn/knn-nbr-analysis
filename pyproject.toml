@@ -1,7 +1,7 @@
 [tool.ruff]
 ignore = ["C901", "E501", "E741", "W605", "G004"]
-select = ["E", "F", "I", "W", "N", "D", "S"]
-fixable = ["E", "F", "I", "W", "D"]
+select = ["E", "F", "I", "W", "N", "D", "S", "UP"]
+fixable = ["E", "F", "I", "W", "D", "N", "S", "UP"]
 
 # Same as `black`'s default.
 line-length = 88

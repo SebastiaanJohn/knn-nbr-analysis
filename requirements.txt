@@ -1,2 +1,4 @@
 ruff
-pytorch
+pandas
+numpy
+scikit-learn

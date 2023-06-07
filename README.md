@@ -5,3 +5,17 @@ This repository hosts our code for the Recommender Systems university course, fo
 ## Requirements
 
 The code is written in Python 3.10. The requirements can be installed using `pip install -r requirements.txt` or with the conda environment file `conda env create -f environment.yml`.
+
+## Evaluation
+
+The evaluation of the models is done using the `eval.py` script. The script can be run with the following command:
+
+```bash
+python src/eval.py <path_to_history_file> <path_to_future_purchases_file> <optional_arguments>
+```
+
+The script takes two required arguments, the first one is the path to the purchase history file, the second one is the path to the future purchases file. The script also takes many optional arguments, which can be seen by running `python src/eval.py --help`. For example, to run the evaluation on the TaFang dataset, run the following command:
+
+```bash
+python src/eval.py ./data/TaFang_history_NB.csv ./data/TaFang_future_NB.csv
+```

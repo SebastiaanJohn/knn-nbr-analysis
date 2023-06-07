@@ -11,3 +11,6 @@ dependencies:
   - pytorch>=2.0.0
   - pip:
     - ruff
+    - numpy
+    - pandas
+    - scikit-learn
