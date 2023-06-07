@@ -3,11 +3,10 @@
 
 import argparse
 import logging
-from itertools import islice
 
 import numpy as np
 import pandas as pd
-from metrics import get_ndcg, get_precision_recall_fscore
+from metrics import calculate_metrics
 from utils import get_total_materials
 
 from data.dataset import load_data, partition_data_ids
@@ -53,7 +52,7 @@ def group_history(hist_arr: np.ndarray, group_size: int) -> tuple[np.ndarray, in
         (
             np.full(group_size - groups_with_extra_vector, base_vectors_per_group),
             np.full(groups_with_extra_vector, base_vectors_per_group + 1),
-        )
+        ),
     )
 
     grouped_vectors = (
@@ -212,32 +211,7 @@ def evaluate(
         train_his_vecs, test_his_vecs, train_ids, test_ids, indices, alpha,
     )
 
-    recalls = []
-    precisions = []
-    f_scores = []
-    ndcg = []
-    for idx, test_id in enumerate(test_ids):
-        target_variable = future_df.loc[test_id].to_numpy()[0]
-        output_vector = merged_his_vecs[idx]
-        output = np.zeros(output_size)
-        target_top_k = output_vector.argsort()[::-1]
-        for value in islice(target_top_k, top_k):
-            output[value] = 1
-        vectorized_target = np.zeros(output_size)
-
-        for ii in target_variable:
-            vectorized_target[ii - 1] = 1
-
-        precision, recall, f_score, _ = get_precision_recall_fscore(
-            vectorized_target, output,
-        )
-
-        precisions.append(precision)
-        recalls.append(recall)
-        f_scores.append(f_score)
-        ndcg += [get_ndcg(vectorized_target, target_top_k, top_k)]
-
-    return np.mean(recalls), np.mean(ndcg), np.mean(f_scores)
+    return calculate_metrics(future_df, test_ids, merged_his_vecs, output_size, top_k)
 
 def main(args: argparse.Namespace) -> None:
     """Runs the TIFUKNN model on the specified dataset."""

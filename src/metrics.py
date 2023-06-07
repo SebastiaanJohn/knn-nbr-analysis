@@ -1,10 +1,16 @@
 """This module contains the functions for calculating the metrics."""
 
 
+from itertools import islice
+
 import numpy as np
+import pandas as pd
 
 
-def get_precision_recall_fscore(groundtruth: list[int], pred: list[int]) -> tuple[float, float, float, int]:
+def get_precision_recall_fscore(
+    groundtruth: list[int],
+    pred: list[int],
+) -> tuple[float, float, float, int]:
     """This function calculates the precision, recall, and F-score.
 
     Args:
@@ -44,14 +50,55 @@ def get_ndcg(groundtruth: np.array, pred_rank_list: np.array, k: int) -> float:
     pred_rank_list = pred_rank_list[:k]
     relevant_scores = groundtruth[pred_rank_list]
 
-    dcg = np.sum((relevant_scores == 1) / np.log2(np.arange(2, len(pred_rank_list) + 2)))
+    dcg = np.sum((relevant_scores == 1) / \
+                 np.log2(np.arange(2, len(pred_rank_list) + 2)))
 
     num_real_item = np.sum(groundtruth)
     num_item = int(num_real_item)
 
     idcg = np.sum(1 / np.log2(np.arange(2, num_item + 2)))
 
-    ndcg = dcg / idcg if idcg > 0 else 0
+    return dcg / idcg if idcg > 0 else 0
 
-    return ndcg
+def calculate_metrics(
+    future_df: pd.DataFrame,
+    test_ids: np.ndarray,
+    merged_his_vecs: np.ndarray,
+    output_size: int,
+    top_k: int,
+) -> tuple[float, float, float, float]:
+    """Calculate the metrics for the given test set.
 
+    Args:
+        future_df (pd.DataFrame): The future dataframe.
+        test_ids (np.ndarray): The customer IDs of the test set.
+        merged_his_vecs (np.ndarray): The merged history vectors.
+        output_size (int): The number of unique material numbers.
+        top_k (int): The number of recommendations to make.
+
+    Returns:
+        tuple[float, float, float, float]: The precision, recall, F-score, and NDCG.
+    """
+    recalls, precisions, f_scores, ndcg = [], [], [], []
+    for idx, test_id in enumerate(test_ids):
+        target_variable = future_df.loc[test_id].to_numpy()[0]
+        output_vector = merged_his_vecs[idx]
+        output = np.zeros(output_size)
+        target_top_k = output_vector.argsort()[::-1]
+        for value in islice(target_top_k, top_k):
+            output[value] = 1
+        vectorized_target = np.zeros(output_size)
+
+        for target in target_variable:
+            vectorized_target[target - 1] = 1
+
+        precision, recall, f_score, _ = get_precision_recall_fscore(
+            vectorized_target, output,
+        )
+
+        precisions.append(precision)
+        recalls.append(recall)
+        f_scores.append(f_score)
+        ndcg.append(get_ndcg(vectorized_target, target_top_k, top_k))
+
+    return np.mean(recalls), np.mean(ndcg), np.mean(f_scores)
