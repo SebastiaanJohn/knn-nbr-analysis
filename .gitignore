@@ -168,3 +168,7 @@ tb_logs/
 
 
 # Project-specific files (e.g. datasets, models, etc.)
+data/lastfm-dataset-1K/README.txt
+data/lastfm-dataset-1K/userid-profile.tsv
+data/lastfm-dataset-1K/userid-timestamp-artid-artname-traid-traname.tsv
+data/mmtd/tweet.txt
