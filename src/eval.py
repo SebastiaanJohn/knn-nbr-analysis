@@ -154,6 +154,7 @@ def evaluate(
     k: int = 300,
     alpha: float = 0.7,
     top_k: int = 10,
+    distance_metric: str = "cosine",
 ) -> tuple[float, float, float]:
     """Trains a KNN model and evaluates it on the validation and test sets.
 
@@ -175,6 +176,8 @@ def evaluate(
             Defaults to 0.7.
         top_k (int): The number of recommendations to make for each customer.
             Defaults to 10.
+        distance_metric (str): The distance metric to use for the KNN model.
+            Defaults to "cosine".
 
     Returns:
         Returns the recall@k, NDGC@k, and hr@k.
@@ -203,7 +206,7 @@ def evaluate(
     logging.info(
         "Calculating the future vectors for each customer in the training set..."
     )
-    indices, _ = knn(test_his_vecs, train_his_vecs, k)
+    indices, _ = knn(test_his_vecs, train_his_vecs, k, distance_metric)
 
     # Merge the history vectors of the train and test sets
     logging.info("Merging the history vectors of the train and test sets...")
@@ -253,6 +256,7 @@ def main(args: argparse.Namespace) -> None:
         args.k,
         args.alpha,
         args.top_k,
+        args.distance_metric,
     )
     # Print the results.
     logging.info("Results:")
@@ -293,6 +297,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--top_k", help="The number of top elements.", type=int, default=10,
+    )
+    parser.add_argument(
+        "--distance_metric",
+        help="The distance metric to use.",
+        choices=["euclidean", "cosine", "manhattan"],
+        default="euclidean",
     )
 
     # Dataset arguments.
