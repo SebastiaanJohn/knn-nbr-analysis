@@ -5,7 +5,7 @@ import pandas as pd
 
 def get_total_materials(df: pd.DataFrame) -> int:
     """Get total number of unique materials in the dataframe."""
-    return df.explode().unique().shape[0]
+    return max(df.explode().unique())
 
 
 def get_total_customers(df: pd.DataFrame) -> int:

@@ -19,3 +19,13 @@ The script takes two required arguments, the first one is the path to the purcha
 ```bash
 python src/eval.py ./data/TaFang_history_NB.csv ./data/TaFang_future_NB.csv
 ```
+
+## Dataset
+
+Further datasets such as lastfm-1k or mmtd can be parsed by using `dataset.py` script. The following command can be used (dataset_name is either lastfm or mmtd):
+
+```bash
+python src/data/dataset.py <dataset_name> <path_to_dataset_file> <optional_arguments>
+```
+
+Optional arguements include months for baskets, which selects the month interval to create baskets, and listen threshold which removes songs that were listened less than n times in the dataset.

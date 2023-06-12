@@ -183,7 +183,9 @@ def evaluate(
         Returns the recall@k, NDGC@k, and hr@k.
     """
     # Get the total number of unique materials
-    output_size = get_total_materials(history_df)
+    history_size = get_total_materials(history_df)
+    future_size = get_total_materials(future_df)
+    output_size = max(history_size, future_size)
 
     # Calculate the history vectors for each customer in the training set
     train_his_vecs = np.array(

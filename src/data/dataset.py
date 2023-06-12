@@ -122,15 +122,13 @@ def partition_data_ids(
 
 def handle_lastfm(
     path: str,
-    months_for_baskets: int = 6,
-    listen_threshold: int = 10
+    listen_threshold: int,
 ) -> None:
     """Handle the LastFM dataset.
 
     Args:
         path (str): The path to the LastFM dataset.
-        months_for_baskets (int): The number of months to use for each basket.
-            Defaults to 6.
+        listen_threshold (int): The number of times a song must be listened to
     """
     # Load the data
     df = pd.read_csv(path, delimiter="\t", header=None, error_bad_lines=False)
@@ -160,22 +158,77 @@ def handle_lastfm(
         if song_name not in song_ids:
             continue
         user = int(row[0][-5::])
-        if user > 10:
-            break
-        if user % 2 == 0 and user != current_user:
+        if user % 100 == 0 and user != current_user:
             current_user = user
             logging.info(f"Reading current user: {user}/1000")
         date = datetime.strptime(row[1], "%Y-%m-%dT%H:%M:%SZ")
         song_id = song_ids[song_name]
         if user not in users:
             users[user] = []
-        users[user].append((date, song_id))
+        users[user].append((date, song_id)) 
+    return users
+
+def handle_mmtd(
+    path: str,
+    listen_threshold: int,
+) -> None:
+    """Handle the mmtd dataset.
+
+    Args:
+        path (str): The path to the mmtd dataset.
+        listen_threshold (int): The number of times a song must be listened to
+    """
+    # Load the data
+    df = pd.read_csv(path, delimiter="\t")
     
+    song_old_ids = df["tweet_trackId"].unique()
+    song_counts = df["tweet_trackId"].value_counts()
+    user_old_ids = df["tweet_userId"].unique()
+    
+    logging.info(f"Number of unique songs before removing: {len(song_old_ids)}")
+    song_old_ids = song_old_ids[song_counts > listen_threshold]
+    logging.info(f"Number of unique songs after removing: {len(song_old_ids)}")
+    
+    song_ids = {}
+    for idx, song_old_id in enumerate(song_old_ids):
+        song_ids[song_old_id] = idx + 1
+    
+    user_ids = {}
+    for idx, user_old_id in enumerate(user_old_ids):
+        user_ids[user_old_id] = idx + 1
+        
+    users = {}
+    current_line = 0
+    for index, row in df.iterrows():
+        cur_song = row["tweet_trackId"]
+        cur_user = row["tweet_userId"]
+        if cur_song not in song_ids:
+            continue
+        user = user_ids[cur_user]
+        if index % 100000 == 0 and index != current_line:
+            current_line = index
+            logging.info(f"Reading current line: {index}/{len(df)}")
+        date = datetime.strptime(row["tweet_datetime"], "%Y-%m-%d %H:%M:%S")
+        song_id = song_ids[cur_song]
+        if user not in users:
+            users[user] = []
+        users[user].append((date, song_id))
+    return users
+    
+    
+
+def create_csvs(
+    users: dict[int, list[tuple[datetime, int]]],
+    dataset: str,
+    months_for_baskets: int = 6
+) -> None:
     # For every user, sort the songs by date
     for user in users:
         users[user].sort(key=lambda x: x[0])
         
     # For every user, create baskets
+    basket_count = 0
+    item_count = 0
     for user in users:
         first_date = users[user][0][0]
         # Fix first date to beginning of the month
@@ -184,6 +237,15 @@ def handle_lastfm(
             difference = int((users[user][i][0] - first_date).days / 30)
             basket_id = int(difference / months_for_baskets) + 1
             users[user][i] = (basket_id, users[user][i][1])
+        # Get the maximum basket id
+        max_basket_id = max([x[0] for x in users[user]])
+        basket_count += max_basket_id
+        item_count += len(users[user])
+            
+    # Print the number of users, average baskets per user, average songs per basket
+    logging.info(f"Number of users: {len(users)}")
+    logging.info(f"Average baskets per user: {basket_count / len(users)}")
+    logging.info(f"Average songs per basket: {item_count / basket_count}")
     
     # Create the future and history dataframes
     future_df = pd.DataFrame(columns=["CUSTOMER_ID", "ORDER_NUMBER", "MATERIAL_NUMBER"])
@@ -229,8 +291,8 @@ def handle_lastfm(
         )
     
     # Save the dataframes
-    history_df.to_csv("data/lastfm_history.csv", index=False)
-    future_df.to_csv("data/lastfm_future.csv", index=False)
+    history_df.to_csv(f"data/{dataset}_history.csv", index=False)
+    future_df.to_csv(f"data/{dataset}_future.csv", index=False)
         
         
     
@@ -241,11 +303,13 @@ def main(args: argparse.Namespace) -> None:
     
     # Handle the LastFM dataset
     if args.dataset == "lastfm":
-        handle_lastfm(args.path, args.months_for_baskets, args.listen_threshold)
+        users = handle_lastfm(args.path, args.listen_threshold)
         
     # Handle the MMTD dataset
     elif args.dataset == "mmtd":
-        pass
+        users = handle_mmtd(args.path, args.listen_threshold)
+    
+    create_csvs(users, args.dataset, args.months_for_baskets)
 
 
 if __name__ == "__main__":
@@ -255,11 +319,11 @@ if __name__ == "__main__":
     )
     
     parser.add_argument(
-        "--dataset", type=str, help="The dataset to use.", default="lastfm"
+        "dataset", type=str, help="The dataset to use."
     )
     
     parser.add_argument(
-        "--path", type=str, help="The path to read the data from.", default="data/lastfm-dataset-1K/userid-timestamp-artid-artname-traid-traname.tsv"
+        "path", type=str, help="The path to read the data from."
     )
     
     parser.add_argument(
@@ -267,7 +331,7 @@ if __name__ == "__main__":
     )
     
     parser.add_argument(
-        "--listen_threshold", help="If a song is listened less then the amount, it is removed.", type=int, default=10
+        "--listen_threshold", help="If a song is listened less then the amount in the whole dataset, it is removed.", type=int, default=200
     )
     
     # Parse the arguments.
