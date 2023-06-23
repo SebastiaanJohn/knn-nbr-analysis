@@ -85,18 +85,18 @@ def evaluate(
             for customer_id in test_ids
         ],
     )
-    # TODO: add validation set
+    # TODO: add validation set (however, this is not used in the paper)
 
     # Calculate the future vectors for each customer in the training set
     logging.info(f"Calculating the future vectors using {model}...")
     if model == "knn":
-        indices, _ = knn(test_his_vecs, train_his_vecs, k, distance_metric)
+        neighbor_indices, _ = knn(test_his_vecs, train_his_vecs, k, distance_metric)
     elif model == "dbscan":
-        indices = dbscan(
+        cluster_labels = dbscan(
             test_his_vecs, eps=eps, min_samples=min_samples, metric=distance_metric
         )
     elif model == "hdbscan":
-        indices = hdbscan(
+        cluster_labels = hdbscan(
             test_his_vecs, min_samples=min_samples, metric=distance_metric
         )
     else:
@@ -108,10 +108,10 @@ def evaluate(
     # Merge the history vectors of the train and test sets
     logging.info("Merging the history vectors of the train and test sets...")
     if model in {"dbscan", "hdbscan"}:
-        train_his_dict = create_hist_dict(train_ids, train_his_vecs)
-        test_his_dict = create_hist_dict(test_ids, test_his_vecs)
+        train_history_mapping = create_hist_dict(train_ids, train_his_vecs)
+        test_history_mapping = create_hist_dict(test_ids, test_his_vecs)
         merged_his_vecs = merge_customer_history_vectors_dbscan(
-            train_his_dict, test_his_dict, indices, train_ids, test_ids, alpha
+            train_history_mapping, test_history_mapping, cluster_labels, train_ids, test_ids, alpha
         )
     else:
         merged_his_vecs = merge_history(
@@ -119,7 +119,7 @@ def evaluate(
             test_his_vecs,
             train_ids,
             test_ids,
-            indices,
+            neighbor_indices,
             alpha,
         )
 
