@@ -4,102 +4,120 @@ import numpy as np
 
 
 def merge_history(
-    train_his_vecs: np.ndarray,
-    test_his_vecs: np.ndarray,
-    train_ids: np.ndarray,
-    test_ids: np.ndarray,
-    indices: np.ndarray,
+    train_history_vectors: np.ndarray,
+    test_history_vectors: np.ndarray,
+    train_customer_ids: np.ndarray,
+    test_customer_ids: np.ndarray,
+    nearest_neighbor_indices: np.ndarray,
     alpha: float,
 ) -> np.ndarray:
     """Merge the history vectors of the train and test sets.
 
     Args:
-        train_his_vecs (np.ndarray): The history vectors of the train set.
-        test_his_vecs (np.ndarray): The history vectors of the test set.
-        train_ids (np.ndarray): The customer IDs of the train set.
-        test_ids (np.ndarray): The customer IDs of the test set.
-        indices (np.ndarray): The indices of the nearest neighbors.
+        train_history_vectors (np.ndarray): The history vectors of the train set.
+        test_history_vectors (np.ndarray): The history vectors of the test set.
+        train_customer_ids (np.ndarray): The customer IDs of the train set.
+        test_customer_ids (np.ndarray): The customer IDs of the test set.
+        nearest_neighbor_indices (np.ndarray): The indices of the nearest neighbors.
         alpha (float): The weight of the history vector of the query vector.
     """
-    # Create a dictionary mapping the customer IDs to their history vectors
-    train_his_dict = dict(zip(train_ids, train_his_vecs))
-    test_his_dict = dict(zip(test_ids, test_his_vecs))
+    # Create dictionaries mapping customer IDs to their history vectors
+    train_history_dict = dict(zip(train_customer_ids, train_history_vectors))
+    test_history_dict = dict(zip(test_customer_ids, test_history_vectors))
 
     # Initialize a list to store the merged history vectors
-    merged_his_vecs = []
+    merged_history_vectors = []
 
     # Iterate over the indices of the nearest neighbors
-    for idx, row in enumerate(indices):
-        # Get the customer ID of the query vector
-        query_id = test_ids[idx]
-        # Get the customer ID of the k nearest neighbors
-        nn_ids = train_ids[row]
+    for index, row in enumerate(nearest_neighbor_indices):
+        # Get the customer ID of the current query vector
+        query_customer_id = test_customer_ids[index]
+        # Get the customer IDs of the k nearest neighbors
+        nearest_neighbor_ids = train_customer_ids[row]
         # Get the history vectors of the k nearest neighbors
-        nn_his_vecs = np.array([train_his_dict[nn_id] for nn_id in nn_ids])
+        nearest_neighbor_history_vectors = np.array(
+            [train_history_dict[neighbor_id] for neighbor_id in nearest_neighbor_ids]
+        )
         # Get the history vector of the query vector
-        query_his_vec = test_his_dict[query_id]
+        query_history_vector = test_history_dict[query_customer_id]
         # Calculate the merged history vector
-        merged_his_vec = alpha * query_his_vec + (1 - alpha) * np.mean(
-            nn_his_vecs, axis=0,
+        merged_history_vector = alpha * query_history_vector + (1 - alpha) * np.mean(
+            nearest_neighbor_history_vectors,
+            axis=0,
         )
         # Append the merged history vector to the list
-        merged_his_vecs.append(merged_his_vec)
+        merged_history_vectors.append(merged_history_vector)
 
-    return np.array(merged_his_vecs)
+    return np.array(merged_history_vectors)
 
 
-def merge_history_dbscan(
-    train_his_dict: dict[str, np.ndarray],
-    test_his_dict: dict[str, np.ndarray],
-    indices: np.ndarray,
-    train_ids: np.ndarray,
-    test_ids: np.ndarray,
+def merge_customer_history_vectors_dbscan(
+    train_history_mapping: dict[str, np.ndarray],
+    test_history_mapping: dict[str, np.ndarray],
+    dbscan_cluster_labels: np.ndarray,
+    train_customer_ids: np.ndarray,
+    test_customer_ids: np.ndarray,
     alpha: float,
 ) -> np.ndarray:
-    """Merge the history vectors of the train and test sets using DBSCAN.
+    """Merge the history vectors of the train and test sets using DBSCAN clustering.
 
     Args:
-        train_his_dict (dict[str, np.ndarray]): Mapping of customer IDs to
+        train_history_mapping (dict[str, np.ndarray]): Mapping of customer IDs to
             history vectors for the train set.
-        test_his_dict (dict[str, np.ndarray]): Mapping of customer IDs to
+        test_history_mapping (dict[str, np.ndarray]): Mapping of customer IDs to
             history vectors for the test set.
-        indices (np.ndarray): The indices of the clustering method.
-        train_ids (np.ndarray): The customer IDs of the train set.
-        test_ids (np.ndarray): The customer IDs of the test set.
+        dbscan_cluster_labels (np.ndarray): The DBSCAN cluster labels for each point in the test set.
+        train_customer_ids (np.ndarray): The customer IDs of the train set.
+        test_customer_ids (np.ndarray): The customer IDs of the test set.
         alpha (float): The weight of the history vector of the query vector.
 
     Returns:
         np.ndarray: The merged history vectors.
     """
-    merged_his_vecs = []
+    merged_history_vectors = []
 
-    # Iterate over the test_ids and associated cluster labels
-    for idx, cluster_label in enumerate(indices):
-        # Get the customer ID of the query vector
-        query_id = test_ids[idx]
+    # Precompute indices for each cluster
+    cluster_to_indices_mapping = {}
+    for cluster_label in set(dbscan_cluster_labels):
+        if cluster_label != -1:
+            cluster_to_indices_mapping[cluster_label] = np.where(
+                dbscan_cluster_labels == cluster_label
+            )[0]
 
-        # Get the history vector of the query vector
-        query_his_vec = test_his_dict[query_id]
+    # Iterate over the test customer IDs and associated cluster labels
+    for index, cluster_label in enumerate(dbscan_cluster_labels):
+        # Get the customer ID of the current query vector
+        query_customer_id = test_customer_ids[index]
 
-        if cluster_label != -1:  # Valid cluster
-            # Get the IDs of the customers in the same cluster as the test point
-            train_cluster_ids = train_ids[np.where(indices == cluster_label)[0]]
-            if train_cluster_ids.size > 0:
-                # Get the history vectors of the train customers in the same cluster
-                nn_his_vecs = np.array(
-                    [train_his_dict[train_id] for train_id in train_cluster_ids]
+        # Get the history vector of the current query vector
+        query_history_vector = test_history_mapping[query_customer_id]
+
+        # Initialize nearest_neighbor_history_vectors as empty
+        nearest_neighbor_history_vectors = np.empty((0, query_history_vector.shape[0]))
+
+        # If valid cluster, retrieve history vectors of train customers in the same cluster
+        if cluster_label in cluster_to_indices_mapping:
+            train_cluster_customer_ids = train_customer_ids[
+                cluster_to_indices_mapping[cluster_label]
+            ]
+            if train_cluster_customer_ids.size > 0:
+                nearest_neighbor_history_vectors = np.array(
+                    [
+                        train_history_mapping[train_customer_id]
+                        for train_customer_id in train_cluster_customer_ids
+                    ]
                 )
-            else:
-                nn_his_vecs = np.empty((0, query_his_vec.shape[0]))
-        else:    # No valid cluster (noisy point)
-            nn_his_vecs = np.empty((0, query_his_vec.shape[0]))
 
-        if nn_his_vecs.size > 0:
-            merged_his_vec = alpha * query_his_vec + (1 - alpha) * np.mean(
-                nn_his_vecs, axis=0,
-            )
-            merged_his_vecs.append(merged_his_vec)
+        # Calculate the merged history vector
+        if nearest_neighbor_history_vectors.size > 0:
+            merged_history_vector = alpha * query_history_vector + (
+                1 - alpha
+            ) * np.mean(nearest_neighbor_history_vectors, axis=0)
         else:
-            merged_his_vecs.append(query_his_vec)
+            merged_history_vector = query_history_vector
 
-    return np.array(merged_his_vecs)
+        # Append the merged history vector to the list
+        merged_history_vectors.append(merged_history_vector)
+
+    return np.array(merged_history_vectors)
+

@@ -6,7 +6,7 @@ import logging
 
 import numpy as np
 import pandas as pd
-from merge_history import merge_history, merge_history_dbscan
+from merge_history import merge_customer_history_vectors_dbscan, merge_history
 from metrics import calculate_metrics
 from tabulate import tabulate
 from temporal_decay import temporal_decay
@@ -110,7 +110,7 @@ def evaluate(
     if model in {"dbscan", "hdbscan"}:
         train_his_dict = create_hist_dict(train_ids, train_his_vecs)
         test_his_dict = create_hist_dict(test_ids, test_his_vecs)
-        merged_his_vecs = merge_history_dbscan(
+        merged_his_vecs = merge_customer_history_vectors_dbscan(
             train_his_dict, test_his_dict, indices, train_ids, test_ids, alpha
         )
     else:
