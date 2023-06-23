@@ -1,72 +1,40 @@
 """This module contains the functions for calculating the metrics."""
 
+
+from itertools import islice
+
 import numpy as np
 import pandas as pd
 
 
-def get_true_positive(groundtruth: np.ndarray, pred: np.ndarray) -> int:
-    """Utility function that calculates true positive."""
-    return np.count_nonzero((groundtruth == pred) & (groundtruth == 1))
-
-
-def get_groundtruth_positive(groundtruth: np.ndarray) -> int:
-    """Utility function that calculates the total positive in groundtruth."""
-    return np.count_nonzero(groundtruth == 1)
-
-
-def get_predicted_positive(pred: np.ndarray) -> int:
-    """Utility function that calculates the total predicted positive."""
-    return np.count_nonzero(pred == 1)
-
-
-def get_precision(groundtruth: np.ndarray, pred: np.ndarray) -> float:
-    """This function calculates the precision.
+def get_precision_recall_fscore(
+    groundtruth: list[int],
+    pred: list[int],
+) -> tuple[float, float, float, int]:
+    """This function calculates the precision, recall, and F-score.
 
     Args:
-        groundtruth (np.array): A numpy array representing the ground truth data.
-        pred (np.array): A numpy array representing the predicted data.
+        groundtruth (list): A list representing the ground truth data.
+        pred (list): A list representing the predicted data.
 
     Returns:
-        float: The precision score.
+        tuple: A tuple containing the precision, recall, F-score, and correct count.
     """
-    correct = get_true_positive(groundtruth, pred)
-    positive = get_predicted_positive(pred)
-    return correct / positive if positive else 0
+    assert len(groundtruth) == len(pred), "Both groundtruth and pred should have the same length."
 
+    correct = np.count_nonzero((groundtruth == pred) & (groundtruth == 1))
+    truth = np.count_nonzero(groundtruth == 1)
+    positive = np.count_nonzero(pred == 1)
 
-def get_recall(groundtruth: np.ndarray, pred: np.ndarray) -> float:
-    """This function calculates the recall.
-
-    Args:
-        groundtruth (np.array): A numpy array representing the ground truth data.
-        pred (np.array): A numpy array representing the predicted data.
-
-    Returns:
-        float: The recall score.
-    """
-    correct = get_true_positive(groundtruth, pred)
-    truth = get_groundtruth_positive(groundtruth)
-    return correct / truth if truth else 0
-
-
-def get_fscore(groundtruth: np.ndarray, pred: np.ndarray) -> float:
-    """This function calculates the F-score.
-
-    Args:
-        groundtruth (np.array): A numpy array representing the ground truth data.
-        pred (np.array): A numpy array representing the predicted data.
-
-    Returns:
-        float: The F-score.
-    """
-    precision = get_precision(groundtruth, pred)
-    recall = get_recall(groundtruth, pred)
+    precision = correct / positive if positive else 0
+    recall = correct / truth if truth else 0
 
     if precision + recall > 0:
-        return 2 * precision * recall / (precision + recall)
+        f_score = 2 * precision * recall / (precision + recall)
     else:
-        return 0
+        f_score = 0
 
+    return precision, recall, f_score, correct
 
 def get_ndcg(groundtruth: np.array, pred_rank_list: np.array, k: int) -> float:
     """This function calculates the Normalized Discounted Cumulative Gain (NDCG).
@@ -76,16 +44,14 @@ def get_ndcg(groundtruth: np.array, pred_rank_list: np.array, k: int) -> float:
         pred_rank_list (np.array): A numpy array representing the predicted ranking.
         k (int): The number of items to consider from the top of the predicted ranking.
 
-
     Returns:
         float: The NDCG score.
     """
     pred_rank_list = pred_rank_list[:k]
     relevant_scores = groundtruth[pred_rank_list]
 
-    dcg = np.sum(
-        (relevant_scores == 1) / np.log2(np.arange(2, len(pred_rank_list) + 2))
-    )
+    dcg = np.sum((relevant_scores == 1) / \
+                 np.log2(np.arange(2, len(pred_rank_list) + 2)))
 
     num_real_item = np.sum(groundtruth)
     num_item = int(num_real_item)
@@ -100,7 +66,7 @@ def calculate_metrics(
     merged_his_vecs: np.ndarray,
     output_size: int,
     top_k: int,
-) -> tuple[float, float, float, float, float]:
+) -> tuple[float, float, float, float]:
     """Calculate the metrics for the given test set.
 
     Args:
@@ -111,37 +77,28 @@ def calculate_metrics(
         top_k (int): The number of recommendations to make.
 
     Returns:
-        tuple[float, float, float, float, float]: The precision, recall,
-            F-score, NDCG, and PHR.
+        tuple[float, float, float, float]: The precision, recall, F-score, and NDCG.
     """
-    # Check if test_ids and merged_his_vecs are of the same length
-    assert len(test_ids) == len(
-        merged_his_vecs
-    ), "Mismatch in length of test_ids and merged_his_vecs"
+    recalls, precisions, f_scores, ndcg = [], [], [], []
+    for idx, test_id in enumerate(test_ids):
+        target_variable = future_df.loc[test_id].to_numpy()[0]
+        output_vector = merged_his_vecs[idx]
+        output = np.zeros(output_size)
+        target_top_k = output_vector.argsort()[::-1]
+        for value in islice(target_top_k, top_k):
+            output[value] = 1
+        vectorized_target = np.zeros(output_size)
 
-    target_variables = future_df.loc[test_ids].to_numpy()
-    output_vectors = merged_his_vecs
+        for target in target_variable:
+            vectorized_target[target - 1] = 1
 
-    # Initializing metrics
-    recall, precision, f_score, ndcg = [], [], [], []
+        precision, recall, f_score, _ = get_precision_recall_fscore(
+            vectorized_target, output,
+        )
 
-    for target_variable, output_vector in zip(target_variables, output_vectors):
-        # Get the indices of the top_k elements
-        target_top_k = output_vector.argsort()[-top_k:][::-1]
+        precisions.append(precision)
+        recalls.append(recall)
+        f_scores.append(f_score)
+        ndcg.append(get_ndcg(vectorized_target, target_top_k, top_k))
 
-        # Create boolean masks
-        output_mask = np.isin(range(output_size), target_top_k)
-        target_mask = np.isin(range(output_size), np.array(target_variable) - 1)
-
-        # Calculate metrics
-        recall.append(get_recall(target_mask, output_mask))
-        precision.append(get_precision(target_mask, output_mask))
-        f_score.append(get_fscore(target_mask, output_mask))
-        ndcg.append(get_ndcg(target_mask, target_top_k, top_k))
-
-    return (
-        np.mean(precision),
-        np.mean(recall),
-        np.mean(f_score),
-        np.mean(ndcg),
-    )
+    return np.mean(recalls), np.mean(ndcg), np.mean(f_scores)
