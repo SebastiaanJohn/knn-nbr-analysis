@@ -134,8 +134,7 @@ def calculate_metrics(
         target_mask = np.isin(range(output_size), np.array(target_variable) - 1)
 
         # Calculate metrics
-       
-        recall.append( get_recall(target_mask, output_mask))
+        recall.append(get_recall(target_mask, output_mask))
         precision.append(get_precision(target_mask, output_mask))
         f_score.append(get_fscore(target_mask, output_mask))
         ndcg.append(get_ndcg(target_mask, target_top_k, top_k))
