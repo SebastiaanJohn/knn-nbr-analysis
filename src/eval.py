@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from merge_history import merge_history, merge_history_dbscan
 from metrics import calculate_metrics
+from tabulate import tabulate
 from temporal_decay import temporal_decay
 from utils import create_hist_dict, get_total_materials
 
@@ -91,9 +92,13 @@ def evaluate(
     if model == "knn":
         indices, _ = knn(test_his_vecs, train_his_vecs, k, distance_metric)
     elif model == "dbscan":
-        indices = dbscan(test_his_vecs, eps=eps, min_samples=min_samples, metric=distance_metric)
+        indices = dbscan(
+            test_his_vecs, eps=eps, min_samples=min_samples, metric=distance_metric
+        )
     elif model == "hdbscan":
-        indices = hdbscan(test_his_vecs, min_samples=min_samples, metric=distance_metric)
+        indices = hdbscan(
+            test_his_vecs, min_samples=min_samples, metric=distance_metric
+        )
     else:
         raise ValueError(
             f"Invalid clustering method: {model}. "
@@ -110,23 +115,36 @@ def evaluate(
         )
     else:
         merged_his_vecs = merge_history(
-            train_his_vecs, test_his_vecs, train_ids, test_ids, indices, alpha,
+            train_his_vecs,
+            test_his_vecs,
+            train_ids,
+            test_ids,
+            indices,
+            alpha,
         )
 
     return calculate_metrics(future_df, test_ids, merged_his_vecs, output_size, top_k)
+
 
 def main(args: argparse.Namespace) -> None:
     """Runs the TIFUKNN model on the specified dataset."""
     # Load the datasets.
     logging.info("Loading the datasets...")
     history_df, future_df = load_data(
-        args.history_file, args.future_file, args.min_orders,
+        args.history_file,
+        args.future_file,
+        args.min_orders,
     )
 
     # Create training, validation, and test sets.
     logging.info("Creating the training, validation, and test sets...")
     train_ids, val_ids, test_ids = partition_data_ids(
-        history_df, args.train_pct, args.val_pct, args.test_pct, args.seed, args.shuffle,
+        history_df,
+        args.train_pct,
+        args.val_pct,
+        args.test_pct,
+        args.seed,
+        args.shuffle,
     )
     logging.info(
         f"Number of training customers: {len(train_ids)} "
@@ -143,7 +161,7 @@ def main(args: argparse.Namespace) -> None:
 
     # Evaluate the model.
     logging.info("Evaluating the model...")
-    recall, ndcg, f_score = evaluate(
+    metrics = evaluate(
         history_df,
         future_df,
         train_ids,
@@ -161,12 +179,13 @@ def main(args: argparse.Namespace) -> None:
         args.model,
     )
     # Print the results.
-    logging.info("Results:")
-    # logging.info(f"Precision@{args.top_k}: {precision:.4f}")
-    logging.info(f"Recall@{args.top_k}: {recall:.4f}")
-    logging.info(f"NDCG@{args.top_k}: {ndcg:.4f}")
-    logging.info(f"F1@{args.top_k}: {f_score:.4f}")
-
+    table = tabulate(
+        metrics.items(),
+        headers=["Metric", "Value"],
+        tablefmt="pretty",
+        colalign=("left", "left")
+    )
+    logging.info(f'\n{table}')
 
 if __name__ == "__main__":
     # Create the argument parser.
@@ -176,10 +195,12 @@ if __name__ == "__main__":
 
     # Required arguments.
     parser.add_argument(
-        "history_file", help="The file containing the customer purchase history.",
+        "history_file",
+        help="The file containing the customer purchase history.",
     )
     parser.add_argument(
-        "future_file", help="The file containing the customer future purchases.",
+        "future_file",
+        help="The file containing the customer future purchases.",
     )
 
     # Evaluation arguments.
@@ -190,22 +211,40 @@ if __name__ == "__main__":
         default="knn",
     )
     parser.add_argument(
-        "--k", help="The number of nearest neighbors.", type=int, default=300,
+        "--k",
+        help="The number of nearest neighbors.",
+        type=int,
+        default=300,
     )
     parser.add_argument(
-        "--r_b", help="The decay rate within a group.", type=float, default=0.9,
+        "--r_b",
+        help="The decay rate within a group.",
+        type=float,
+        default=0.9,
     )
     parser.add_argument(
-        "--r_g", help="The decay rate between groups.", type=float, default=0.7,
+        "--r_g",
+        help="The decay rate between groups.",
+        type=float,
+        default=0.7,
     )
     parser.add_argument(
-        "--alpha", help="The weight of the current group.", type=float, default=0.7,
+        "--alpha",
+        help="The weight of the current group.",
+        type=float,
+        default=0.7,
     )
     parser.add_argument(
-        "--m", help="The size of a group.", type=int, default=7,
+        "--m",
+        help="The size of a group.",
+        type=int,
+        default=7,
     )
     parser.add_argument(
-        "--top_k", help="The number of top elements.", type=int, default=10,
+        "--top_k",
+        help="The number of top elements.",
+        type=int,
+        default=10,
     )
     parser.add_argument(
         "--eps",
@@ -265,12 +304,18 @@ if __name__ == "__main__":
 
     # Logging arguments.
     parser.add_argument(
-        "--logging_level", help="The logging level.", type=int, default=logging.INFO,
+        "--logging_level",
+        help="The logging level.",
+        type=int,
+        default=logging.INFO,
     )
 
     # Other arguments.
     parser.add_argument(
-        "--seed", help="The random seed.", type=int, default=42,
+        "--seed",
+        help="The random seed.",
+        type=int,
+        default=42,
     )
 
     # Parse the arguments.
