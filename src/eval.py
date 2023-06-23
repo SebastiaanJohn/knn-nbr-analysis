@@ -143,7 +143,7 @@ def main(args: argparse.Namespace) -> None:
 
     # Evaluate the model.
     logging.info("Evaluating the model...")
-    precision, recall, f_score, ndcg = evaluate(
+    recall, ndcg, f_score = evaluate(
         history_df,
         future_df,
         train_ids,
@@ -162,7 +162,7 @@ def main(args: argparse.Namespace) -> None:
     )
     # Print the results.
     logging.info("Results:")
-    logging.info(f"Precision@{args.top_k}: {precision:.4f}")
+    # logging.info(f"Precision@{args.top_k}: {precision:.4f}")
     logging.info(f"Recall@{args.top_k}: {recall:.4f}")
     logging.info(f"NDCG@{args.top_k}: {ndcg:.4f}")
     logging.info(f"F1@{args.top_k}: {f_score:.4f}")
