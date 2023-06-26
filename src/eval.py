@@ -6,13 +6,13 @@ import logging
 
 import numpy as np
 import pandas as pd
+from data.dataset import load_data, partition_data_ids
 from merge_history import merge_customer_history_vectors_dbscan, merge_history
 from metrics import calculate_metrics
 from tabulate import tabulate
 from temporal_decay import temporal_decay
 from utils import create_hist_dict, get_total_materials
 
-from data.dataset import load_data, partition_data_ids
 from models import dbscan, hdbscan, knn
 
 
@@ -20,7 +20,6 @@ def evaluate(
     history_df: pd.DataFrame,
     future_df: pd.DataFrame,
     train_ids: np.ndarray,
-    val_ids: np.ndarray,
     test_ids: np.ndarray,
     m: int = 7,
     r_b: float = 0.9,
@@ -39,7 +38,6 @@ def evaluate(
         history_df (pd.DataFrame): The dataframe containing the customer purchase history.
         future_df (pd.DataFrame): The dataframe containing the customer future purchases.
         train_ids (np.ndarray): The customer IDs in the training set.
-        val_ids (np.ndarray): The customer IDs in the validation set.
         test_ids (np.ndarray): The customer IDs in the test set.
         m (int): The number of groups to split the history into.
             Defaults to 7.
@@ -85,7 +83,6 @@ def evaluate(
             for customer_id in test_ids
         ],
     )
-    # TODO: add validation set (however, this is not used in the paper)
 
     # Calculate the future vectors for each customer in the training set
     logging.info(f"Calculating the future vectors using {model}...")
@@ -165,7 +162,6 @@ def main(args: argparse.Namespace) -> None:
         history_df,
         future_df,
         train_ids,
-        val_ids,
         test_ids,
         args.m,
         args.r_b,
