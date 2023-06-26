@@ -1,40 +1,72 @@
 """This module contains the functions for calculating the metrics."""
 
 
-from itertools import islice
 
 import numpy as np
 import pandas as pd
 
 
-def get_precision_recall_fscore(
-    groundtruth: list[int],
-    pred: list[int],
-) -> tuple[float, float, float, int]:
-    """This function calculates the precision, recall, and F-score.
+def get_true_positive(groundtruth: np.ndarray, pred: np.ndarray) -> int:
+    """This function calculates the number of true positives."""
+    return np.count_nonzero((groundtruth == pred) & (groundtruth == 1))
+
+def get_true_negative(groundtruth: np.ndarray, pred: np.ndarray) -> int:
+    """This function calculates the number of true negatives."""
+    return np.count_nonzero((groundtruth == pred) & (groundtruth == 0))
+
+def get_false_positive(groundtruth: np.ndarray, pred: np.ndarray) -> int:
+    """This function calculates the number of false positives."""
+    return np.count_nonzero((groundtruth != pred) & (groundtruth == 0))
+
+def get_false_negative(groundtruth: np.ndarray, pred: np.ndarray) -> int:
+    """This function calculates the number of false negatives."""
+    return np.count_nonzero((groundtruth != pred) & (groundtruth == 1))
+
+
+def get_recall(groundtruth: np.ndarray, pred: np.ndarray) -> float:
+    """This function calculates the recall.
 
     Args:
-        groundtruth (list): A list representing the ground truth data.
-        pred (list): A list representing the predicted data.
+        groundtruth (np.ndarray): A numpy array representing the ground truth data.
+        pred (np.ndarray): A numpy array representing the predicted data.
 
     Returns:
-        tuple: A tuple containing the precision, recall, F-score, and correct count.
+        float: The recall score.
     """
-    assert len(groundtruth) == len(pred), "Both groundtruth and pred should have the same length."
+    true_positive = get_true_positive(groundtruth, pred)
+    false_negative = get_false_negative(groundtruth, pred)
 
-    correct = np.count_nonzero((groundtruth == pred) & (groundtruth == 1))
-    truth = np.count_nonzero(groundtruth == 1)
-    positive = np.count_nonzero(pred == 1)
+    return true_positive / (true_positive + false_negative) if true_positive + false_negative > 0 else 0
 
-    precision = correct / positive if positive else 0
-    recall = correct / truth if truth else 0
+def get_precision(groundtruth: np.ndarray, pred: np.ndarray) -> float:
+    """This function calculates the precision.
 
-    if precision + recall > 0:
-        f_score = 2 * precision * recall / (precision + recall)
-    else:
-        f_score = 0
+    Args:
+        groundtruth (np.ndarray): A numpy array representing the ground truth data.
+        pred (np.ndarray): A numpy array representing the predicted data.
 
-    return precision, recall, f_score, correct
+    Returns:
+        float: The precision score.
+    """
+    true_positive = get_true_positive(groundtruth, pred)
+    false_positive = get_false_positive(groundtruth, pred)
+
+    return true_positive / (true_positive + false_positive) if true_positive + false_positive > 0 else 0
+
+def get_fscore(groundtruth: np.ndarray, pred: np.ndarray) -> float:
+    """This function calculates the F-score.
+
+    Args:
+        groundtruth (np.ndarray): A numpy array representing the ground truth data.
+        pred (np.ndarray): A numpy array representing the predicted data.
+
+    Returns:
+        float: The F-score.
+    """
+    precision = get_precision(groundtruth, pred)
+    recall = get_recall(groundtruth, pred)
+
+    return 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
 
 def get_ndcg(groundtruth: np.array, pred_rank_list: np.array, k: int) -> float:
     """This function calculates the Normalized Discounted Cumulative Gain (NDCG).
@@ -72,33 +104,38 @@ def calculate_metrics(
     Args:
         future_df (pd.DataFrame): The future dataframe.
         test_ids (np.ndarray): The customer IDs of the test set.
-        merged_his_vecs (np.ndarray): The merged history vectors.
+        merged_his_vecs (np.ndarray): The merged history vectors
         output_size (int): The number of unique material numbers.
         top_k (int): The number of recommendations to make.
 
     Returns:
-        tuple[float, float, float, float]: The precision, recall, F-score, and NDCG.
+        dict[str, float]: A dictionary containing the metrics.
     """
-    recalls, precisions, f_scores, ndcg = [], [], [], []
+    recall, precision, f_score, ndcg = [], [], [], []
     for idx, test_id in enumerate(test_ids):
         target_variable = future_df.loc[test_id].to_numpy()[0]
         output_vector = merged_his_vecs[idx]
-        output = np.zeros(output_size)
-        target_top_k = output_vector.argsort()[::-1]
-        for value in islice(target_top_k, top_k):
-            output[value] = 1
-        vectorized_target = np.zeros(output_size)
 
+        # Get the top K indices sorted by value in descending order
+        target_top_k = output_vector.argsort()[::-1][:top_k]
+
+        # Initialize the output vector and set top K positions to 1
+        output = np.zeros(output_size)
+        output[target_top_k] = 1
+
+        # Vectorize target variable
+        vectorized_target = np.zeros(output_size)
         for target in target_variable:
             vectorized_target[target - 1] = 1
 
-        precision, recall, f_score, _ = get_precision_recall_fscore(
-            vectorized_target, output,
-        )
-
-        precisions.append(precision)
-        recalls.append(recall)
-        f_scores.append(f_score)
+        precision.append(get_precision(vectorized_target, output))
+        recall.append(get_recall(vectorized_target, output))
+        f_score.append(get_fscore(vectorized_target, output))
         ndcg.append(get_ndcg(vectorized_target, target_top_k, top_k))
 
-    return np.mean(recalls), np.mean(ndcg), np.mean(f_scores)
+    return {
+        f"Precision@{top_k}": round(np.mean(precision), 4),
+        f"Recall@{top_k}": round(np.mean(recall), 4),
+        f"F1@{top_k}": round(np.mean(f_score), 4),
+        f"NDCG@{top_k}": round(np.mean(ndcg), 4),
+    }

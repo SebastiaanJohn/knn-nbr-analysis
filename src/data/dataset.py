@@ -133,18 +133,18 @@ def handle_lastfm_1k(
     # Load the data
     df = pd.read_csv(path, delimiter="\t", header=None, error_bad_lines=False)
     df = df.dropna(subset=[5]) # Drop rows with missing song names
-    
+
     #Get all the songnames into a list, map each songname to a unique id
     song_names = df[5].unique()
-    
+
     # Find the counts of each song
     song_counts = df[5].value_counts()
-    
+
     # Remove songs that are played less than threshold
     logging.info(f"Number of unique songs before removing: {len(song_names)}")
     song_names = song_names[song_counts > listen_threshold]
     logging.info(f"Number of unique songs after removing: {len(song_names)}")
-    
+
     song_ids = {}
     for idx, song_name in enumerate(song_names):
         song_ids[song_name] = idx + 1
@@ -165,7 +165,7 @@ def handle_lastfm_1k(
         song_id = song_ids[song_name]
         if user not in users:
             users[user] = []
-        users[user].append((date, song_id)) 
+        users[user].append((date, song_id))
     return users
 
 def handle_lastfm_1b(
@@ -186,21 +186,21 @@ def handle_lastfm_1b(
     
     temp_df = pd.read_csv(path, delimiter="\t", header=None, usecols=[0])
     user_old_ids = temp_df[0].unique()
-    
+
     temp_df = None
-    
+
     logging.info(f"Number of unique artists before removing: {len(artist_old_ids)}")
     artist_old_ids = artist_old_ids[artist_counts > listen_threshold]
     logging.info(f"Number of unique artists after removing: {len(artist_old_ids)}")
-    
+
     artist_ids = {}
     for idx, artist_old_id in enumerate(artist_old_ids):
         artist_ids[artist_old_id] = idx + 1
-    
+
     user_ids = {}
     for idx, user_old_id in enumerate(user_old_ids):
         user_ids[user_old_id] = idx + 1
-        
+
     chunk_df = pd.read_csv(path, delimiter="\t", header=None, usecols=[0,1,4], chunksize=10000000)
         
     users = {}
@@ -220,18 +220,26 @@ def handle_lastfm_1b(
                 users[user] = []
             users[user].append((date, artist_id))
     return users
-    
-    
+
+
 
 def create_csvs(
     users: dict[int, list[tuple[datetime, int]]],
     dataset: str,
     months_for_baskets: int = 6
 ) -> None:
+    """Create the csv files for the music datasets.
+
+    Args:
+        users (dict[int, list[tuple[datetime, int]]]): The users dictionary.
+        dataset (str): The name of the dataset.
+        months_for_baskets (int, optional): The number of months for each basket.
+            Defaults to 6.
+    """
     # For every user, sort the songs by date
     for user in users:
         users[user].sort(key=lambda x: x[0])
-        
+
     # For every user, create baskets
     basket_count = 0
     item_count = 0
@@ -247,12 +255,12 @@ def create_csvs(
         max_basket_id = max([x[0] for x in users[user]])
         basket_count += max_basket_id
         item_count += len(users[user])
-            
+
     # Print the number of users, average baskets per user, average songs per basket
     logging.info(f"Number of users: {len(users)}")
     logging.info(f"Average baskets per user: {basket_count / len(users)}")
     logging.info(f"Average songs per basket: {item_count / basket_count}")
-    
+
     # Create the future and history dataframes
     future_df = pd.DataFrame(columns=["CUSTOMER_ID", "ORDER_NUMBER", "MATERIAL_NUMBER"])
     history_df = pd.DataFrame(columns=["CUSTOMER_ID", "ORDER_NUMBER", "MATERIAL_NUMBER"])
@@ -281,7 +289,7 @@ def create_csvs(
                 ),
             ]
         )
-        
+
         # Create the future dataframe
         future_df = pd.concat(
             [
@@ -295,14 +303,15 @@ def create_csvs(
                 ),
             ]
         )
-    
+
     # Save the dataframes
     history_df.to_csv(f"data/{dataset}_history.csv", index=False)
     future_df.to_csv(f"data/{dataset}_future.csv", index=False)
-        
-        
-    
+
+
+
 def main(args: argparse.Namespace) -> None:
+    """Create the csv files for the dataset."""
     # Give error if dataset is not lastfm or mmtd
     if args.dataset not in ["lastfm-1k", "lastfm-1b"]:
         raise ValueError("Dataset must be either 'lastfm-1k' or 'lastfm-1b'.")
@@ -323,23 +332,23 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    
+
     parser.add_argument(
         "--dataset", type=str, help="The dataset to use.", default="lastfm-1b"
     )
-    
+
     parser.add_argument(
         "--path", type=str, help="The path to read the data from.", default="data/LFM-1b/LFM-1b_LEs.txt"
     )
-    
+
     parser.add_argument(
         "--months_for_baskets", help="Time intervals to create baskets.", type=int, default=1
     )
-    
+
     parser.add_argument(
         "--listen_threshold", help="If a song is listened less then the amount in the whole dataset, it is removed.", type=int, default=200
     )
-    
+
     # Parse the arguments.
     args = parser.parse_args()
 
@@ -354,4 +363,3 @@ if __name__ == "__main__":
     logging.info(f"{args=}")
 
     main(args)
-    
