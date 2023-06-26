@@ -31,6 +31,8 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.txt
+*.csv
 MANIFEST
 
 # PyInstaller
@@ -173,3 +175,5 @@ data/lastfm-dataset-1K/userid-profile.tsv
 data/lastfm-dataset-1K/userid-timestamp-artid-artname-traid-traname.tsv
 data/mmtd/tweet.txt
 .vscode/launch.json
+data/LFM-1b/LFM-1b_LEs.mat
+data/LFM-1b.zip

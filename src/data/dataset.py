@@ -120,11 +120,11 @@ def partition_data_ids(
     return train_ids, val_ids, test_ids
 
 
-def handle_lastfm(
+def handle_lastfm_1k(
     path: str,
     listen_threshold: int,
 ) -> None:
-    """Handle the LastFM dataset.
+    """Handle the LastFM-1k dataset.
 
     Args:
         path (str): The path to the LastFM dataset.
@@ -168,51 +168,57 @@ def handle_lastfm(
         users[user].append((date, song_id)) 
     return users
 
-def handle_mmtd(
+def handle_lastfm_1b(
     path: str,
     listen_threshold: int,
 ) -> None:
-    """Handle the mmtd dataset.
+    """Handle the lastfm-1b dataset.
 
     Args:
-        path (str): The path to the mmtd dataset.
+        path (str): The path to the lastfm-1b dataset.
         listen_threshold (int): The number of times a song must be listened to
     """
     # Load the data
-    df = pd.read_csv(path, delimiter="\t")
+    temp_df = pd.read_csv(path, delimiter="\t", header=None, usecols=[1])
     
-    song_old_ids = df["tweet_trackId"].unique()
-    song_counts = df["tweet_trackId"].value_counts()
-    user_old_ids = df["tweet_userId"].unique()
+    artist_old_ids = temp_df[1].unique()
+    artist_counts = temp_df[1].value_counts()
     
-    logging.info(f"Number of unique songs before removing: {len(song_old_ids)}")
-    song_old_ids = song_old_ids[song_counts > listen_threshold]
-    logging.info(f"Number of unique songs after removing: {len(song_old_ids)}")
+    temp_df = pd.read_csv(path, delimiter="\t", header=None, usecols=[0])
+    user_old_ids = temp_df[0].unique()
     
-    song_ids = {}
-    for idx, song_old_id in enumerate(song_old_ids):
-        song_ids[song_old_id] = idx + 1
+    temp_df = None
+    
+    logging.info(f"Number of unique artists before removing: {len(artist_old_ids)}")
+    artist_old_ids = artist_old_ids[artist_counts > listen_threshold]
+    logging.info(f"Number of unique artists after removing: {len(artist_old_ids)}")
+    
+    artist_ids = {}
+    for idx, artist_old_id in enumerate(artist_old_ids):
+        artist_ids[artist_old_id] = idx + 1
     
     user_ids = {}
     for idx, user_old_id in enumerate(user_old_ids):
         user_ids[user_old_id] = idx + 1
         
+    chunk_df = pd.read_csv(path, delimiter="\t", header=None, usecols=[0,1,4], chunksize=10000000)
+        
     users = {}
-    current_line = 0
-    for index, row in df.iterrows():
-        cur_song = row["tweet_trackId"]
-        cur_user = row["tweet_userId"]
-        if cur_song not in song_ids:
-            continue
-        user = user_ids[cur_user]
-        if index % 100000 == 0 and index != current_line:
-            current_line = index
-            logging.info(f"Reading current line: {index}/{len(df)}")
-        date = datetime.strptime(row["tweet_datetime"], "%Y-%m-%d %H:%M:%S")
-        song_id = song_ids[cur_song]
-        if user not in users:
-            users[user] = []
-        users[user].append((date, song_id))
+    for i, chunk in enumerate(chunk_df):
+        logging.info(f"Reading current line: {i * 10000000}/{1000000000}")
+        for index, row in chunk.iterrows():
+            cur_artist = row[1]
+            cur_user = row[0]
+            if cur_artist not in artist_ids:
+                continue
+            user = user_ids[cur_user]
+            #Convert seconds since 1970 to datetime
+            date = datetime.fromtimestamp(row[4])
+        
+            artist_id = artist_ids[cur_artist]
+            if user not in users:
+                users[user] = []
+            users[user].append((date, artist_id))
     return users
     
     
@@ -298,16 +304,16 @@ def create_csvs(
     
 def main(args: argparse.Namespace) -> None:
     # Give error if dataset is not lastfm or mmtd
-    if args.dataset not in ["lastfm", "mmtd"]:
-        raise ValueError("Dataset must be either 'lastfm' or 'mmtd'.")
+    if args.dataset not in ["lastfm-1k", "lastfm-1b"]:
+        raise ValueError("Dataset must be either 'lastfm-1k' or 'lastfm-1b'.")
     
     # Handle the LastFM dataset
-    if args.dataset == "lastfm":
-        users = handle_lastfm(args.path, args.listen_threshold)
+    if args.dataset == "lastfm-1k":
+        users = handle_lastfm_1k(args.path, args.listen_threshold)
         
     # Handle the MMTD dataset
-    elif args.dataset == "mmtd":
-        users = handle_mmtd(args.path, args.listen_threshold)
+    elif args.dataset == "lastfm-1b":
+        users = handle_lastfm_1b(args.path, args.listen_threshold)
     
     create_csvs(users, args.dataset, args.months_for_baskets)
 
@@ -319,15 +325,15 @@ if __name__ == "__main__":
     )
     
     parser.add_argument(
-        "dataset", type=str, help="The dataset to use."
+        "--dataset", type=str, help="The dataset to use.", default="lastfm-1b"
     )
     
     parser.add_argument(
-        "path", type=str, help="The path to read the data from."
+        "--path", type=str, help="The path to read the data from.", default="data/LFM-1b/LFM-1b_LEs.txt"
     )
     
     parser.add_argument(
-        "--months_for_baskets", help="Time intervals to create baskets.", type=int, default=6
+        "--months_for_baskets", help="Time intervals to create baskets.", type=int, default=1
     )
     
     parser.add_argument(
@@ -348,3 +354,4 @@ if __name__ == "__main__":
     logging.info(f"{args=}")
 
     main(args)
+    
