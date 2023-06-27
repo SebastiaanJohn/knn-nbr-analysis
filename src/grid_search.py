@@ -1,14 +1,18 @@
-"""Performs grid search on a specified dataset."""
-
-
 import argparse
+import functools
 import logging
 
 import numpy as np
-from data.dataset import load_data, partition_data_ids
+import pandas as pd
 from eval import evaluate
 from tabulate import tabulate
 
+from data.dataset import load_data, partition_data_ids
+
+
+class DatasetNotFoundError(Exception):
+    """Raised when the dataset is not found in the BEST_PARAMS dictionary."""
+    pass
 
 # Parameters from the paper
 PAPER_PARAMS = {
@@ -19,62 +23,154 @@ PAPER_PARAMS = {
 }
 
 
-def grid_search(args: argparse.Namespace) -> None:
-    """Performs grid search on a specified dataset."""
-    # Load the datasets
+@functools.lru_cache
+def get_data_for_search(
+    history_file: str,
+    future_file: str,
+    min_orders: int,
+    split_percents: tuple[float, float, float] = (0.8, 0.1, 0.1),
+    seed: int = 42,
+    shuffle: bool = False,
+) -> tuple:
+    """Get necessary data for grid search.
+
+    Returns:
+        history_df: history dataframe
+        future_df: future dataframe
+        train_ids: training set ids
+        val_ids: validation set ids
+        test_ids: test set ids
+        dataset_name: name of the dataset
+    """
     logging.info("Loading the datasets...")
     history_df, future_df = load_data(
-        args.history_file, args.future_file, args.min_orders
+        history_file, future_file, min_orders
     )
-    dataset_name = args.history_file.split("/")[-1].split(".")[0]
+    dataset_name = history_file.split("/")[-1].split(".")[0]
 
     # Create training, validation, and test sets
     logging.info("Creating the training and validation sets...")
+    train_pct, val_pct, test_pct = split_percents
     train_ids, val_ids, test_ids = partition_data_ids(
-        history_df, args.train_pct, args.val_pct, args.test_pct, args.seed, args.shuffle
+        history_df, train_pct, val_pct, test_pct, seed, shuffle
     )
 
-    # Get the dataset parameters from original paper
+    return history_df, future_df, train_ids, val_ids, test_ids, dataset_name
+
+
+def evaluate_params(
+    args: argparse.Namespace,
+    history_df: pd.DataFrame,
+    future_df: pd.DataFrame,
+    train_ids: np.ndarray,
+    val_ids: np.ndarray,
+    dataset_params: dict,
+    extra_params: dict,
+    dataset_name: str,
+) -> dict[str, float]:
+    """Evaluate current parameter combination.
+
+    Returns:
+        metrics: dictionary of metrics for the current parameter combination
+    """
+    logging.info(f"Evaluating with {extra_params}, data={dataset_name}")
+    metrics = evaluate(
+        history_df,
+        future_df,
+        train_ids,
+        val_ids,
+        m=dataset_params["m"],
+        r_b=dataset_params["r_b"],
+        r_g=dataset_params["r_g"],
+        k=dataset_params["k"],
+        alpha=dataset_params["alpha"],
+        top_k=args.top_k,
+        distance_metric=args.distance_metric,
+        model=args.model,
+        **extra_params,
+    )
+    return metrics
+
+
+def perform_grid_search(
+    args: argparse.Namespace,
+    history_df: pd.DataFrame,
+    future_df: pd.DataFrame,
+    train_ids: np.ndarray,
+    val_ids: np.ndarray,
+    dataset_name: str,
+) -> tuple[float, dict]:
+    """Perform grid search based on various parameters for dbscan model and hdbscan model.
+
+    Returns:
+        best_score: best recall@k score
+        best_params: best parameters
+    """
+    # Assuming that metrics is a dictionary with a key 'score' representing the evaluation score
     dataset_params = PAPER_PARAMS.get(dataset_name, None)
     if not dataset_params:
-        raise ValueError(f"Dataset {dataset_name} not found in BEST_PARAMS")
+        raise DatasetNotFoundError(f"Dataset {dataset_name} not found in PAPER_PARAMS")
 
-    # Grid search
     best_score = -np.inf
     best_params = None
-    for eps in args.eps_values:
-        for min_samples in args.min_samples_values:
+    params_iter = {
+        "dbscan": [
+            {"eps": eps, "min_samples": min_samples}
+            for eps in args.eps_values
+            for min_samples in args.min_samples_values
+        ],
+        "hdbscan": [
+            {"min_cluster_size": min_cluster_size, "min_samples": min_samples}
+            for min_cluster_size in args.min_cluster_size_values
+            for min_samples in args.min_samples_values
+        ],
+    }
+
+    for extra_params in params_iter[args.model]:
+        metrics = evaluate_params(
+            args,
+            history_df,
+            future_df,
+            train_ids,
+            val_ids,
+            dataset_params,
+            extra_params,
+            dataset_name,
+        )
+        score = metrics.get(f"Recall@{args.top_k}")
+        if score > best_score:
             logging.info(
-                f"Evaluating with eps={eps}, min_samples={min_samples}, data={dataset_name}"
+                f"New best score: {score}, using parameters: {extra_params}, {dataset_name}"
             )
-            metrics = evaluate(
-                history_df,
-                future_df,
-                train_ids,
-                val_ids,
-                m=dataset_params["m"],
-                r_b=dataset_params["r_b"],
-                r_g=dataset_params["r_g"],
-                k=dataset_params["k"],
-                alpha=dataset_params["alpha"],
-                top_k=args.top_k,
-                eps=eps,
-                min_samples=min_samples,
-                distance_metric=args.distance_metric,
-                model=args.model,
-            )
-            # Assuming that metrics is a dictionary with a key 'score' representing the evaluation score
-            score = metrics.get(f"Recall@{args.top_k}")
-            if score > best_score:
-                logging.info(
-                    f"New best score: {score}, using parameters: {eps}, {min_samples}, {dataset_name}"
-                )
-                best_score = score
-                best_params = {
-                    "eps": eps,
-                    "min_samples": min_samples,
-                    "data": dataset_name,
-                }
+            best_score = score
+            best_params = extra_params
+
+    return best_score, best_params
+
+
+def grid_search(args: argparse.Namespace) -> None:
+    """Performs grid search on a specified dataset."""
+    split_percents = (args.train_pct, args.val_pct, args.test_pct)
+    assert sum(split_percents) == 1.0, "Split percentages must sum to 1.0"
+    (
+        history_df,
+        future_df,
+        train_ids,
+        val_ids,
+        test_ids,
+        dataset_name,
+    ) = get_data_for_search(
+        args.history_file,
+        args.future_file,
+        args.min_orders,
+        split_percents,
+        args.seed,
+        args.shuffle,
+    )
+
+    best_score, best_params = perform_grid_search(
+        args, history_df, future_df, train_ids, val_ids, dataset_name
+    )
 
     # Print the best parameters
     logging.info(
@@ -83,21 +179,8 @@ def grid_search(args: argparse.Namespace) -> None:
 
     # Evaluate on the test set
     logging.info("Evaluating on the test set...")
-    metrics = evaluate(
-        history_df,
-        future_df,
-        train_ids,
-        test_ids,
-        m=dataset_params["m"],
-        r_b=dataset_params["r_b"],
-        r_g=dataset_params["r_g"],
-        k=dataset_params["k"],
-        alpha=dataset_params["alpha"],
-        top_k=args.top_k,
-        eps=best_params["eps"],
-        min_samples=best_params["min_samples"],
-        distance_metric=args.distance_metric,
-        model=args.model,
+    metrics = evaluate_params(
+        args, history_df, future_df, train_ids, test_ids, dataset_name, best_params
     )
 
     # Print the results.
@@ -105,9 +188,9 @@ def grid_search(args: argparse.Namespace) -> None:
         metrics.items(),
         headers=["Metric", "Value"],
         tablefmt="pretty",
-        colalign=("left", "left")
+        colalign=("left", "left"),
     )
-    logging.info(f'\n{table}')
+    logging.info(f"\n{table}")
 
 
 if __name__ == "__main__":
@@ -145,9 +228,15 @@ if __name__ == "__main__":
         default=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
     )
     parser.add_argument(
+        "--min_cluster_size_values",
+        help="The minimum size of clusters.",
+        type=list,
+        default=[2, 3, 4, 5, 10, 15, 20, 25, 30],
+    )
+    parser.add_argument(
         "--min_samples_values",
         type=list,
-        default=[1, 5, 10, 15, 20, 25, 30],
+        default=[1, 2, 3, 4, 5, 10, 15, 20, 25, 30],
     )
     parser.add_argument(
         "--distance_metric",

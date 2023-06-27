@@ -1,14 +1,13 @@
 """This module contains functions for loading and partitioning the dataset."""
 
 import argparse
+import concurrent.futures
 import logging
+import threading
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
-
-import threading
-import concurrent.futures
 
 
 def load_data(
@@ -193,18 +192,18 @@ def handle_lastfm_1b(
             user = user_ids[cur_user]
             #Convert seconds since 1970 to datetime
             date = datetime.fromtimestamp(row[4])
-        
+
             artist_id = artist_ids[cur_artist]
             with lock:
                 if user not in users:
                     users[user] = []
                 users[user].append((date, artist_id))
-            
+
     temp_df = pd.read_csv(path, delimiter="\t", header=None, usecols=[1])
-    
+
     artist_old_ids = temp_df[1].unique()
     artist_counts = temp_df[1].value_counts()
-    
+
     temp_df = pd.read_csv(path, delimiter="\t", header=None, usecols=[0])
     user_old_ids = temp_df[0].unique()
 
@@ -223,7 +222,7 @@ def handle_lastfm_1b(
         user_ids[user_old_id] = idx + 1
 
     chunk_df = pd.read_csv(path, delimiter="\t", header=None, usecols=[0,1,4], chunksize=10000000)
-        
+
     users = {}
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = []
@@ -325,15 +324,15 @@ def main(args: argparse.Namespace) -> None:
     # Give error if dataset is not lastfm or mmtd
     if args.dataset not in ["lastfm-1k", "lastfm-1b"]:
         raise ValueError("Dataset must be either 'lastfm-1k' or 'lastfm-1b'.")
-    
+
     # Handle the LastFM dataset
     if args.dataset == "lastfm-1k":
         users = handle_lastfm_1k(args.path, args.listen_threshold)
-        
+
     # Handle the MMTD dataset
     elif args.dataset == "lastfm-1b":
         users = handle_lastfm_1b(args.path, args.listen_threshold)
-    
+
     create_csvs(users, args.dataset, args.months_for_baskets)
 
 
