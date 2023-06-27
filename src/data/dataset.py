@@ -7,6 +7,9 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+import threading
+import concurrent.futures
+
 
 def load_data(
     history_file: str,
@@ -178,7 +181,25 @@ def handle_lastfm_1b(
         path (str): The path to the lastfm-1b dataset.
         listen_threshold (int): The number of times a song must be listened to
     """
-    # Load the data
+    # Load the data using multihtreading
+    lock = threading.Lock()
+    def process_chunk(chunk, users, i):
+        logging.info(f"Reading chunk: {i}/100")
+        for index, row in chunk.iterrows():
+            cur_artist = row[1]
+            cur_user = row[0]
+            if cur_artist not in artist_ids:
+                continue
+            user = user_ids[cur_user]
+            #Convert seconds since 1970 to datetime
+            date = datetime.fromtimestamp(row[4])
+        
+            artist_id = artist_ids[cur_artist]
+            with lock:
+                if user not in users:
+                    users[user] = []
+                users[user].append((date, artist_id))
+            
     temp_df = pd.read_csv(path, delimiter="\t", header=None, usecols=[1])
     
     artist_old_ids = temp_df[1].unique()
@@ -204,21 +225,10 @@ def handle_lastfm_1b(
     chunk_df = pd.read_csv(path, delimiter="\t", header=None, usecols=[0,1,4], chunksize=10000000)
         
     users = {}
-    for i, chunk in enumerate(chunk_df):
-        logging.info(f"Reading current line: {i * 10000000}/{1000000000}")
-        for index, row in chunk.iterrows():
-            cur_artist = row[1]
-            cur_user = row[0]
-            if cur_artist not in artist_ids:
-                continue
-            user = user_ids[cur_user]
-            #Convert seconds since 1970 to datetime
-            date = datetime.fromtimestamp(row[4])
-        
-            artist_id = artist_ids[cur_artist]
-            if user not in users:
-                users[user] = []
-            users[user].append((date, artist_id))
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = []
+        for i, chunk in enumerate(chunk_df):
+            futures.append(executor.submit(process_chunk, chunk, users, i))
     return users
 
 
@@ -346,7 +356,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--listen_threshold", help="If a song is listened less then the amount in the whole dataset, it is removed.", type=int, default=200
+        "--listen_threshold", help="If a song is listened less then the amount in the whole dataset, it is removed.", type=int, default=250
     )
 
     # Parse the arguments.
