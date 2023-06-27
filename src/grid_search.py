@@ -1,3 +1,5 @@
+"""Grid search for the DBSCAN and HDBSCAN models."""
+
 import argparse
 import functools
 import logging
@@ -99,12 +101,13 @@ def perform_grid_search(
     train_ids: np.ndarray,
     val_ids: np.ndarray,
     dataset_name: str,
-) -> tuple[float, dict]:
+) -> tuple[float, dict, dict]:
     """Perform grid search based on various parameters for dbscan model and hdbscan model.
 
     Returns:
         best_score: best recall@k score
         best_params: best parameters
+        dataset_params: parameters from the paper for the specified dataset
     """
     # Assuming that metrics is a dictionary with a key 'score' representing the evaluation score
     dataset_params = PAPER_PARAMS.get(dataset_name, None)
@@ -145,7 +148,7 @@ def perform_grid_search(
             best_score = score
             best_params = extra_params
 
-    return best_score, best_params
+    return best_score, best_params, dataset_params
 
 
 def grid_search(args: argparse.Namespace) -> None:
@@ -168,7 +171,7 @@ def grid_search(args: argparse.Namespace) -> None:
         args.shuffle,
     )
 
-    best_score, best_params = perform_grid_search(
+    best_score, best_params, dataset_params = perform_grid_search(
         args, history_df, future_df, train_ids, val_ids, dataset_name
     )
 
@@ -180,7 +183,7 @@ def grid_search(args: argparse.Namespace) -> None:
     # Evaluate on the test set
     logging.info("Evaluating on the test set...")
     metrics = evaluate_params(
-        args, history_df, future_df, train_ids, test_ids, dataset_name, best_params
+        args, history_df, future_df, train_ids, test_ids, dataset_params, best_params, dataset_name
     )
 
     # Print the results.
