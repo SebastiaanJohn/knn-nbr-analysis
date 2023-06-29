@@ -6,13 +6,13 @@ import logging
 
 import numpy as np
 import pandas as pd
-from data.dataset import load_data, partition_data_ids
 from merge_history import merge_customer_history_vectors_dbscan, merge_history
 from metrics import calculate_metrics
 from tabulate import tabulate
 from temporal_decay import temporal_decay
 from utils import create_hist_dict, get_total_materials
 
+from data.dataset import load_data, partition_data_ids
 from models import dbscan, hdbscan, knn
 
 
@@ -28,6 +28,7 @@ def evaluate(
     alpha: float = 0.7,
     top_k: int = 10,
     eps: float = 0.5,
+    min_cluster_size: int = 5,
     min_samples: int = 5,
     distance_metric: str = "cosine",
     model: str = "knn",
@@ -53,6 +54,8 @@ def evaluate(
             Defaults to 10.
         eps (float): The epsilon value for hdbscan/dbscan clustering.
             Defaults to 0.5.
+        min_cluster_size (int): The minimum cluster size for hdbscan clustering.
+            Defaults to 5.
         min_samples (int): The minimum number of samples for hdbscan/dbscan clustering.
             Defaults to 5.
         distance_metric (str): The distance metric to use for the KNN model.
@@ -87,14 +90,25 @@ def evaluate(
     # Calculate the future vectors for each customer in the training set
     logging.info(f"Calculating the future vectors using {model}...")
     if model == "knn":
-        neighbor_indices, _ = knn(test_his_vecs, train_his_vecs, k, distance_metric)
+        neighbor_indices, _ = knn(
+            test_his_vecs,
+            train_his_vecs,
+            k=k,
+            distance_metric=distance_metric
+        )
     elif model == "dbscan":
         cluster_labels = dbscan(
-            test_his_vecs, eps=eps, min_samples=min_samples, metric=distance_metric
+            test_his_vecs,
+            eps=eps,
+            min_samples=min_samples,
+            metric=distance_metric,
         )
     elif model == "hdbscan":
         cluster_labels = hdbscan(
-            test_his_vecs, min_samples=min_samples, metric=distance_metric
+            test_his_vecs,
+            min_samples=min_samples,
+            min_cluster_size=min_cluster_size,
+            metric=distance_metric,
         )
     else:
         raise ValueError(
@@ -170,6 +184,7 @@ def main(args: argparse.Namespace) -> None:
         args.alpha,
         args.top_k,
         args.eps,
+        args.min_cluster_size,
         args.min_samples,
         args.distance_metric,
         args.model,
@@ -251,6 +266,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--min_samples",
         help="The number of samples in a neighborhood for a point to be considered as a core point.",
+        type=int,
+        default=5,
+    )
+    parser.add_argument(
+        "--min_cluster_size",
+        help="The minimum size of clusters.",
         type=int,
         default=5,
     )
